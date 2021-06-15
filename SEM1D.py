@@ -233,6 +233,8 @@ def get_xwl(Np):
 
 if __name__ == "__main__":
     
+    from plot1Dnc import read_netcdf
+    import matplotlib.pyplot as plt
     
     Nx  = 200
     Np  = 4
@@ -250,6 +252,11 @@ if __name__ == "__main__":
     simu = SEM1D(mesh, rho, E, eps, Nt, Np, "data/test.nc")
     print(simu)
     simu.run()
+    
+    u,x,t = read_netcdf("data/test.nc")
+    t_idx = t.shape[0] -1
+    plt.plot(x,u[t_idx,:])
+    plt.show()
     
     
     

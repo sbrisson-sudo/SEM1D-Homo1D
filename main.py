@@ -16,11 +16,6 @@ from SEM1D import SEM1D, compute_total_continuous_space
 from homo1D import Homo1D
 from plot1Dnc import read_netcdf
 
-def discontinuous2continuous(mesh,Np,mat):
-    '''transform a discontinuous field mat (with discontinuities at the border of the element of the mesh, which have 2 values) to a continuous:
-        **INPUT**  : mat
-        **OUTPUT** : mat_cont'''
-    
 
 if __name__ == "__main__":
     
@@ -59,23 +54,26 @@ if __name__ == "__main__":
     
     homo.run_homo()
     homo.plot()
+    
     rho_star = homo.get_rho_star()
     G_star   = homo.get_mu_star()
     SEM1D(mesh, rho_star, G_star, eps, Nt, Np, "data/homo2.nc").run()
     
     # Comparaison
     
-    # u1,x,t = read_netcdf("data/ref.nc")
-    # u2,_,_ = read_netcdf("data/homo1.nc")
-    # u3,_,_ = read_netcdf("data/homo2.nc")
+    u1,x,t = read_netcdf("data/ref.nc")
+    u2,_,_ = read_netcdf("data/homo1.nc")
+    u3,_,_ = read_netcdf("data/homo2.nc")
     
-    # t_idx = 2000
+    t_idx = t.shape[0] -1
     
-    # plt.plot(x,u1[t_idx,:],label="ref")
-    # plt.plot(x,u2[t_idx,:],label="moyenne arithmétique")
-    # plt.plot(x,u3[t_idx,:],label="2-scale homogeneisation")
-    # plt.legend()
-    # plt.show()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(x,u1[t_idx,:],label="ref")
+    ax.plot(x,u2[t_idx,:],label="moyenne arithmétique")
+    ax.plot(x,u3[t_idx,:],label="2-scale homogeneisation")
+    ax.legend()
+    plt.show()
 
 
     
