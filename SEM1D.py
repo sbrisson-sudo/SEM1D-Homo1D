@@ -236,7 +236,7 @@ if __name__ == "__main__":
     from plot1Dnc import read_netcdf
     import matplotlib.pyplot as plt
     
-    Nx  = 200
+    Nx  = 300
     Np  = 4
     Nt  = 10000
     eps = 0.1

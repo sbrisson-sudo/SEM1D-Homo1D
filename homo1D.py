@@ -105,15 +105,14 @@ class Homo1D:
     
     def plot(self):
         """Plot the fields before and after homogeneisation"""
-        ax1 = plt.subplot(211)
-        ax1.plot(self.mesh_inter, self.rho_inter,'g',label="density")
-        ax1.plot(self.mesh_inter, self.rho_star_inter,'b', label="effective density")
-        ax1.legend()
-        ax2 = plt.subplot(212)
-        ax2.plot(self.mesh_inter, self.mu_inter,'g', label="shear modulus")
-        ax2.plot(self.mesh_inter, self.mu_star_inter,'b', label="effective shear modulus")
-        ax2.legend()
-        plt.show()
+        ax_rho= plt.subplot(211)
+        ax_rho.plot(self.mesh_inter, self.rho_inter,'g',label="density")
+        ax_rho.plot(self.mesh_inter, self.rho_star_inter,'b', label="effective density")
+        ax_mu = plt.subplot(212)
+        ax_mu.plot(self.mesh_inter, self.mu_inter,'g', label="shear modulus")
+        ax_mu.plot(self.mesh_inter, self.mu_star_inter,'b', label="effective shear modulus")
+        return ax_rho, ax_mu
+        
         
 if __name__ == "__main__":
 

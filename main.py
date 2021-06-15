@@ -21,7 +21,7 @@ if __name__ == "__main__":
     
     # Comparaison milieu periodique avec milieu homogenisé (moyenne arithmétique)
     
-    Nx  = 200
+    Nx  = 300
     Np  = 4
     Nt  = 10000
     eps = 0.1
@@ -32,9 +32,9 @@ if __name__ == "__main__":
     mesh = np.linspace(0,H,Nx+1)
     
     # Milieu periodique
-    
-    rho1 = np.array([0.9 if k%20 < 10 else 1.1 for k in range((Np+1)*Nx)]) * rho0
-    G1   = np.array([0.9 if k%20 < 10 else 1.1 for k in range((Np+1)*Nx)]) * G0
+    n = 4 # periodicité de l'hétérogénéité (en nombre d'éléments)
+    rho1 = np.array([0.9 if k%(n*(Np+1)) < n*(Np+1)//2 else 1.1 for k in range((Np+1)*Nx)]) * rho0
+    G1   = np.array([0.9 if k%(n*(Np+1)) < n*(Np+1)//2 else 1.1 for k in range((Np+1)*Nx)]) * G0
     
     SEM1D(mesh, rho1, G1, eps, Nt, Np, "data/ref.nc").run()
         
@@ -53,7 +53,13 @@ if __name__ == "__main__":
     homo = Homo1D(complete_mesh, complete_mesh, rho1, G1, lamnda_0 = lamnda_0)
     
     homo.run_homo()
-    homo.plot()
+    ax_rho, ax_mu = homo.plot()
+    ax_rho.axhline(rho0,label="mean density")
+    ax_rho.legend()
+    ax_mu.axhline(G0,label="mean shear modulus")
+    ax_mu.legend()
+    plt.plot()
+    
     
     rho_star = homo.get_rho_star()
     G_star   = homo.get_mu_star()
