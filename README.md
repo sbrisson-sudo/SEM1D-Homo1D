@@ -14,6 +14,7 @@
 
 ### Usage Example
   ```bash
+  $ export PYTHONPATH=$(pwd)
   $ python main.py
   $ ./plot1Dnc.py data/ref.nc data/homo*
   ```

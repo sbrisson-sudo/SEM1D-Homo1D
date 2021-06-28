@@ -3,64 +3,125 @@
 
 """
 Created on Tue Jun 15 11:35:07 2021
-@author: sylvain
+@author: Sylvain Brisson, département de géosciences, ENS de Paris
 """
 
 import numpy as np
 import netCDF4 as nc
+from time import time
 import os
 
 class SEM1D:
     
     ''' SOLVEUR SEM DE L'EQUATION D'ONDE ELASTIQUE EN CISAILLEMENT 1D 
     
+    ** UTILISATION**
+    1). Initialisation
+        simu = SEM1D(mesh, rho, G, eps, Np, "test_newmark", ".", time = 1)
+    2). Execution
+        simu.run()
+    
     ** INPUTS **
     - mesh  : vecteur de taille Nx+1 (Nx éléments) des limites des éléments (sur [x1,x2])
-    - Np    : degré polynomial utilisé au sein des éléments (Np+1 poinst par éléments)
     - rho   : densité, vecteur de taille (Np+1)*Nx
     - mu    : module de cisaillement vecteur de taille (Np+1)*Nx
     - eps   : critère de CFL pour calculer dt
-    - Nt    : nombre de pas de temps
-    - file_out   : fichier enregistrement
+    - Np    : degré polynomial utilisé au sein des éléments (Np+1 poinst par éléments)
+    - name  : nom de la simulation (utilisé pour les noms de fichiers produits)
+    - path  : chemin du répertoire d'enregistrement des données
+    
+    ** ARGUMENTS OPTIONNELS **
+    - time  : temps total simulation, en secondes
+    - Nt    : nombre de pas de temps total (un des arguments Nt ou time doit être specifié)
+    - f0    : fréquence centrale de la source (default : 100Hz)
+    - src   : nom de la source (default : ricker, seule source implémentée pour l'instant)
+    - tscheme : time marching scheme : classic (différence finie centrée d'ordre 2) ou Newmark gamma=0.5 beta=0 (default : newmark)
+    - fr_save : frame frequencie to save the wave fields (dafault : 30)
+                                                
+    ** FICHIERS DE SORTIES **
+    - field_[name].nc   : champ d'onde au cours du temps (format netCDF)
+    - trace_[name].asc  : trace sur la liste des positions de reception specifiée (format ASCII)
+    - source_[name].asc : source utilisée (format ASCII)
+    
+    ** METHODES DISPONIBLES **
+    - simu.run()    : lance la simulation
+    - simu.save_medium_properties(path)     : enregistre les propriétés du milieu 
+    - print(simu)   : affiche les paramètres de la simulation
+    
+    ** FONCTIONS AUXILLIAIRES**
+    - compute_total_space(mesh,Np) : retourne un maillage contenant l'ensemble des points distincts (différent du maillage ne contenant que les limites entre éléments)
+    - compute_total_continuous_space(mesh,Np) : retourne un maillage contenant l'ensemble des points y compris non distincts (en les rendants distints d'une quantité epsilon)
     
     '''
     
-    frame_rate_save = 20
-    
-    def __init__(self, mesh, rho, mu, eps, Nt, Np, file_out):
+    def __init__(self, mesh, rho, mu, eps, Np, name_simu, path, *args, **kwargs):
         
-        self.Nx = mesh.shape[0] - 1
-        self.Np = Np
-        self.Nt = Nt
+        self.Nx     = mesh.shape[0] - 1
+        self.Np     = Np
         self.src_idx = int((self.Nx*self.Np+1)/4)
-        self.mesh = mesh
-        self.rho = rho
-        self.mu = mu
-        self.eps = eps
-        self.file_out = file_out
+        self.mesh   = mesh
+        self.rho    = rho
+        self.mu     = mu
+        self.eps    = eps
+        self.name_simu = name_simu
+        self.path   = path
         
+        self.t          = kwargs.get('time',False)
+        self.Nt         = kwargs.get('Nt',False)
+        
+        if (not self.t) and (not self.Nt):
+            raise Exception("You have to specify 'time' (total time) or 'Nt' (number of time steps.")
+            exit(1)
+
+        
+        self.f0         = kwargs.get('f0',100)
+        self.src_name   = kwargs.get('src', 'ricker')
+        self.recep_list = kwargs.get('recep_list', [])
+        self.tScheme    = kwargs.get('tscheme', 'classic')
+        self.frame_rate_save  = kwargs.get('fr_save', 30)
+                
         self.get_xwl()
         self.init_computation()
         
     def __repr__(self):
         
         out = ""
-        out += f"Nombre d'éléments:\t{self.Nx}\n"
-        out += f"Ordre polynomial:\t{self.Np}\n"
-        out += f"Nombre de points distincts:\t{self.Np*self.Nx+1}\n"
-        out += f"Nombre de pas de temps:\t{self.Nt}\n"
-        out += f"Intervalle de temps:\t{self.dt}s\n"
-        out += f"Durée simulation:\t{self.Nt*self.dt}s\n"
-        out += f"Fréquence centrale de la source:\t{self.f0}Hz\n"
-        out += f"Fichier d'écriture':\t{self.file_out}\n"
+        out += "\n===== RUN SEM1D =====\n"
+        out += "{:<35}{}\n".format("Nom de la simulation",self.name_simu)
+        out += "{:<35}{}\n".format("Nombre d'éléments",self.Nx)
+        out += "{:<35}{}\n".format("Ordre polynomial",self.Np)
+        out += "{:<35}{}\n".format("Nombre de points distincts",self.Np*self.Nx+1)
+        out += "{:<35}{}m\n".format("Taille du domaine",self.mesh[-1]-self.mesh[0])        
+        out += "{:<35}{}\n".format("Nombre de pas de temps",self.Nt)
+        out += "{:<35}{}s\n".format("Pas de temps",self.dt)        
+        out += "{:<35}{}s\n".format("Durée simulation",self.t)
+        out += "{:<35}{}Hz\n".format("Fréquence centrale de la source",self.f0)
+        out += "{:<35}{}\n".format("Fonction source",self.src_name)
+        out += "{:<35}{}\n".format("Répertoire d'écriture",self.path)
+        out += "{:<35}{}\n".format("Fichiers d'écriture",f"source_{self.name_simu}.asc")
+        out += "{:<35}{}\n".format("",f"traces_{self.name_simu}.asc")
+        out += "{:<35}{}\n".format("",f"field_{self.name_simu}.nc")
+
         return out
         
     
     def run(self):
         
-        self.init_output_file()
-        self.run_computation()
-        self.close_output_file()
+        t_begin = time()
+        
+        self.init_output_files()
+    
+        if self.tScheme == "classic":
+            self.run_classic()
+        elif self.tScheme == "newmark":
+            self.run_newmark()
+        else :
+            raise Exception(f"time marching scheme {self.tScheme} non reconnu")
+            exit(1)
+            
+        self.close_output_files()
+        
+        print("{:<40}{}\n".format("Temps total (calcul + écriture)",time()-t_begin))
         
     def init_computation(self):
 
@@ -72,6 +133,8 @@ class SEM1D:
         
         # Compute dt
         self.compute_dt()
+        
+        # Compute total_time / number of time steps
         self.compute_time()
 
         # Compute connectivity matrix
@@ -86,7 +149,7 @@ class SEM1D:
         # Compute source
         self.compute_source()
         
-    def run_computation(self):
+    def run_classic(self):
         
         Nx,Np,Nt = self.Nx,self.Np,self.Nt
         U_old   = np.zeros(Nx*Np+1)
@@ -98,17 +161,49 @@ class SEM1D:
         
         for t_idx in range(Nt):
             
+            
             F[self.src_idx] = self.source[t_idx]
             tho[-1] = (self.rho[-1]*self.mu[-1])**0.5*(U[-1]-U_old[-1]) /self.dt
             d2Ut = self.Minv @ (F - self.K @ U - tho)
-                    
             U_new = 2*U - U_old + self.dt**2 * d2Ut
         
             U_old,U = U,U_new  
             
-            if (t_idx % SEM1D.frame_rate_save) == 0:
-                self.u_nc[t_idx//SEM1D.frame_rate_save,:] = np.float32(U)
-                self.t_w[t_idx//SEM1D.frame_rate_save] = self.time[t_idx]
+            if self.recep_list:
+                self.save_traces(t_idx, [U[x_idx] for x_idx in self.recep_pos])
+            
+            if (t_idx % self.frame_rate_save) == 0:
+                self.save_field(t_idx,U)
+                
+    def run_newmark(self):
+        
+        Nx,Np,Nt = self.Nx,self.Np,self.Nt
+        U_old   = np.zeros(Nx*Np+1)
+        U       = np.zeros(Nx*Np+1)
+        dU_old  = np.zeros(Nx*Np+1)
+        dU      = np.zeros(Nx*Np+1)
+        d2U_old = np.zeros(Nx*Np+1)
+        d2U     = np.zeros(Nx*Np+1)
+        F       = np.zeros(Nx*Np+1)
+        tho     = np.zeros(Nx*Np+1)
+        dt      = self.dt
+        
+        for t_idx in range(Nt):
+            
+            
+            F[self.src_idx] = self.source[t_idx]
+            tho[-1] = (self.rho[-1]*self.mu[-1])**0.5 * dU[-1]
+            U = U_old + dt*dU_old + dt*dt/2*d2U_old
+            d2U = self.Minv @ (F - self.K @ U - tho)
+            dU = dU_old + dt/2*(d2U + d2U_old) 
+        
+            U_old, dU_old, d2U_old = U, dU, d2U 
+            
+            if self.recep_list:
+                self.save_traces(t_idx, [U[x_idx] for x_idx in self.recep_pos])
+            
+            if (t_idx % self.frame_rate_save) == 0:
+                self.save_field(t_idx,U)
        
     def get_xwl(self):
         
@@ -132,8 +227,15 @@ class SEM1D:
         self.space = space
         
     def compute_time(self):
+                    
+        if self.t:
+            if self.Nt:
+                raise Exception("Since 'time' is specified, 'Nt' is overridden")
+            self.Nt   = int(self.t / self.dt)
+        elif self.Nt:
+            self.t = self.dt*self.Nt
         
-        self.time = np.linspace(0,self.Nt*self.dt,self.Nt)
+        self.time_vec = np.linspace(0,self.Nt*self.dt,self.Nt)
                 
     def compute_dt(self):
                 
@@ -180,32 +282,64 @@ class SEM1D:
         
     def compute_source(self):
         
-        time = self.time
-        f0 = 100
-        t0 = 4/f0 
-        self.source = -2*(time-t0)*f0**2 * np.exp(-1*(time-t0)**2*f0**2)
-        self.time = time
-        self.f0 = f0
+        if self.src_name == "ricker":
+            time_vec = self.time_vec
+            f0 = self.f0
+            t0 = 4/f0 
+            self.source = (4*(time_vec-t0)**2*f0**4 - 2*f0**2) * np.exp(-1*((time_vec-t0)*f0)**2)
+        else :
+            raise Exception(f"source {self.src_name} non reconnue")
+            exit(1)
         
-    def init_output_file(self):
+        np.savetxt(f"{self.path}/source_{self.name_simu}.asc", np.vstack((self.time_vec,self.source)).T, delimiter="\t")
+            
+    def init_output_files(self):
         
-        ncfile  = nc.Dataset(self.file_out ,mode='w', format='NETCDF4_CLASSIC')
-    
-        ncfile.createDimension('x', self.space.shape[0])
-        ncfile.createDimension('time', None)
-    
-        x_w   = ncfile.createVariable('x', np.float32, ('x',))
-        x_w[:] = np.float32(self.space)
+        self.init_save_field()
+        self.init_save_traces()
         
-        self.t_w   = ncfile.createVariable('time', np.float32, ('time',))
-        
-        self.u_nc = ncfile.createVariable('u',np.float32,('time', "x"))
-        
-        self.ncfile = ncfile
-        
-    def close_output_file(self):
+    def close_output_files(self):
 
         self.ncfile.close()
+        if self.recep_list:
+            header = "\t".join(["time (s)" ] + [f"trace at x={x}m" for x in self.recep_list])
+            np.savetxt(f"{self.path}/traces_{self.name_simu}.asc", np.vstack((self.time_vec,self.traces)).T, delimiter="\t", header=header)
+            
+    def init_save_field(self):
+        
+        filename = f"{self.path}/field_{self.name_simu}.nc"
+        ncfile  = nc.Dataset(filename ,mode='w', format='NETCDF4_CLASSIC')
+        ncfile.createDimension('x', self.space.shape[0])
+        ncfile.createDimension('time', None)
+        x_w   = ncfile.createVariable('x', np.float32, ('x',))
+        x_w[:] = np.float32(self.space)
+        self.t_w   = ncfile.createVariable('time', np.float32, ('time',))
+        self.u_nc = ncfile.createVariable('u',np.float32,('time', "x"))
+        self.ncfile = ncfile
+        
+    def save_field(self,t_idx,U):
+        
+        self.u_nc[t_idx//self.frame_rate_save,:] = np.float32(U)
+        self.t_w[t_idx//self.frame_rate_save] = self.time_vec[t_idx]
+
+    def init_save_traces(self):
+        
+        if not self.recep_list:
+            return
+        
+        self.recep_pos = [(np.abs(self.space - x)).argmin() for x in self.recep_list]
+        self.traces = np.zeros((len(self.recep_list), self.Nt))
+        
+    def save_traces(self, t_idx, U):
+        
+        self.traces[:,t_idx] = U
+        
+    def save_medium_properties(self):
+        
+        total_space = compute_total_space(self.mesh, self.Np)
+        np.savetxt(f"{self.path}/density_{self.name_simu}.asc", np.vstack((total_space, self.rho)).T, delimiter="\t", header="position(m)\tdensity(kg/m3)\n")
+        np.savetxt(f"{self.path}/shear-modulus_{self.name_simu}.asc", np.vstack((total_space, self.mu)).T, delimiter="\t", header="position(m)\tshear modulus()\n")
+        
         
 def compute_total_continuous_space(mesh, Np):
     '''compute the position of all points in a mesh for GLL quadrature points with order Np, collocation points are slighly differents'''
@@ -220,6 +354,16 @@ def compute_total_continuous_space(mesh, Np):
         space[(e+1)*Np] -= eps
     return space
 
+
+def compute_total_space(mesh, Np):
+    '''compute the position of all the points inside a mesh with a Np polynomlial order inside the elements (for GLL quaadrature points)'''
+    Nx = mesh.shape[0] - 1
+    x,_,_   = get_xwl(Np)   
+    space   = np.zeros((Np+1)*Nx)
+    for e in range(Nx):
+        for i in range(Np+1):
+            space[e*(Np+1)+i] = (mesh[e+1]-mesh[e])/2* x[i] + (mesh[e+1]+mesh[e])/2
+    return space
     
 def get_xwl(Np):
     '''get the points, weights of the GLL quadrature, and th ederivative of the lagrangian interpolants over these points'''
@@ -229,34 +373,30 @@ def get_xwl(Np):
     w = data[1,:]
     l = data[2:,:]
     return x,w,l
-        
+
 
 if __name__ == "__main__":
     
-    from plot1Dnc import read_netcdf
-    import matplotlib.pyplot as plt
-    
     Nx  = 300
     Np  = 4
-    Nt  = 10000
+    total_time = 1.5
     eps = 0.1
     rho0 = 3000
-    E0  = 40e9
+    G0  = 40e9
     
-    H   = 10000
+    H   = 5000
     mesh = np.linspace(0,H,Nx+1)
 
     rho = np.ones((Np+1)*Nx) * rho0
-    E   = np.ones((Np+1)*Nx) * E0
+    G   = np.ones((Np+1)*Nx) * G0
+    
+    recep = [H/8, H/4] # position des récepteurs
+    
+    f0 = 100
         
-    simu = SEM1D(mesh, rho, E, eps, Nt, Np, "data/test.nc")
+    simu = SEM1D(mesh, rho, G, eps, Np, "test_newmark", ".", time = total_time, f0=f0, src="ricker", recep_list=recep, tsheme="newmark")
     print(simu)
     simu.run()
-    
-    u,x,t = read_netcdf("data/test.nc")
-    t_idx = t.shape[0] -1
-    plt.plot(x,u[t_idx,:])
-    plt.show()
-    
+
     
     

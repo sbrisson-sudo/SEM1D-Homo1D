@@ -1,0 +1,10 @@
+This directory contains the programs used to demonstrate the 1D homogeneisation program: computing elastic wave propagation in a medium with high frequencies heterogeneities.
+These programs are:
+      - run-ref.py : compute the reference solution (on a detailde match matching every discontinuities)
+      - run_means.py : compute the propagation in 2 media : in the first one the mechanical properties are the arithmetic mean of the reference medium properties, in the second one the density is the arithmetic mean and the shear elastic modulus is the geometirc mean (analytical solution for a periodic medium)
+      - run_homo.py : run the homogenisation (2-scale homogeneisation for non-periodic media) over the refernce medium and then compute the wave propagation over a simplified mesh with the effective properyies computed.
+
+These programs look for the SEM1D and Homo1D packages in the parent directory, you have to manually change it if its not the case.
+
+The outputs files of the SEM program can be plot with the plot_SEM1D.py module (cf doc).
+
