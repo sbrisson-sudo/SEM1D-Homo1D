@@ -6,15 +6,10 @@
 > For their use, refer to the `main.py` program.
 
 ### Tools Programs:
-- `plot1Dnc.py` : tool to plot the nc files produced by `SEM1D.py`
+- `plotSEM1D.py` : tool to plot the files produced by `SEM1D.py` (traces, wavefields, source, material properties)
 
 ### Data directories
-- `data` : netCDF files produces by `SEM1D.py`
 - `xwh_gll` : data needed for the SEM
 
-### Usage Example
-  ```bash
-  $ export PYTHONPATH=$(pwd)
-  $ python main.py
-  $ ./plot1Dnc.py data/ref.nc data/homo*
-  ```
+### Documentation
+The documentation is part of the programs, you can also refer to the examples.
